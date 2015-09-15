@@ -5,7 +5,7 @@ from flask import Flask, request, render_template, session, flash, redirect, \
     url_for, jsonify
 from flask.ext.mail import Mail, Message
 from celery import Celery
-
+import json
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'top-secret!'
@@ -31,11 +31,11 @@ celery = Celery(app.name, broker=app.config['CELERY_BROKER_URL'])
 celery.conf.update(app.config)
 
 
-@celery.task
-def send_async_email(msg):
-    """Background task to send an email with Flask-Mail."""
-    with app.app_context():
-        mail.send(msg)
+#@celery.task
+#def send_async_email(msg):
+    #Background task to send an email with Flask-Mail."""
+    #with app.app_context():
+        #mail.send(msg)
 
 
 @celery.task(bind=True)
@@ -59,34 +59,18 @@ def long_task(self):
             'result': 42}
 
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET'])
 def index():
-    if request.method == 'GET':
-        return render_template('index.html', email=session.get('email', ''))
-    email = request.form['email']
-    session['email'] = email
-
-    # send the email
-    msg = Message('Hello from Flask',
-                  recipients=[request.form['email']])
-    msg.body = 'This is a test email sent from a background Celery task.'
-    if request.form['submit'] == 'Send':
-        # send right away
-        send_async_email.delay(msg)
-        flash('Sending email to {0}'.format(email))
-    else:
-        # send in one minute
-        send_async_email.apply_async(args=[msg], countdown=60)
-        flash('An email will be sent to {0} in one minute'.format(email))
-
-    return redirect(url_for('index'))
+    return render_template('index.html', email=session.get('email', ''))
+   
 
 
 @app.route('/longtask', methods=['POST'])
 def longtask():
-    task = long_task.apply_async()
-    return jsonify({}), 202, {'Location': url_for('taskstatus',
-                                                  task_id=task.id)}
+    task = long_task.delay() #apply_async()
+    return url_for('taskstatus',task_id=task.id)
+    #return jsonify({}), 202, {'Location': url_for('taskstatus',
+    #                                              task_id=task.id)}
 
 
 @app.route('/status/<task_id>')
